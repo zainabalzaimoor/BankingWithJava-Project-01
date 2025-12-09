@@ -1,5 +1,5 @@
 package com.ga.project;
-abstract class Account {
+public abstract class Account {
 
     //withdraw
     //deposit
