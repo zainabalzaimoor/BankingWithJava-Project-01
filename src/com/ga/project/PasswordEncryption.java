@@ -4,8 +4,7 @@ import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 
 public class PasswordEncryption {
-
-    public static String hashPassword(String password) {
+    public  String hashPassword(String password) {
         try {
             // Get an instance of the MessageDigest with SHA-256 algorithm
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -31,21 +30,9 @@ public class PasswordEncryption {
         }
     }
 
-    public static boolean verifyPassword(String rawPassword, String storedHashedPassword) {
+    public boolean verifyPassword(String rawPassword, String storedHashedPassword) {
         String hashedRawPassword = hashPassword(rawPassword);
         return hashedRawPassword != null && hashedRawPassword.equals(storedHashedPassword);
     }
 
-    public static void main(String[] args) {
-        String userPassword = "mySecretPassword123";
-        String hashedPassword = hashPassword(userPassword);
-        System.out.println("Hashed password: " + hashedPassword);
-
-        // Simulate verification
-        boolean isValid = verifyPassword("mySecretPassword123", hashedPassword);
-        System.out.println("Password verification successful: " + isValid);
-
-        boolean isInvalid = verifyPassword("wrongPassword", hashedPassword);
-        System.out.println("Password verification with wrong password: " + isInvalid);
-    }
 }

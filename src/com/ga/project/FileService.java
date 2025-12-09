@@ -9,8 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.time.temporal.ChronoUnit; // <-- ADD THIS IMPORT
-import java.util.stream.Collectors; // <-- ADD THIS IMPORT
+import java.time.temporal.ChronoUnit;
 
 import static java.nio.file.Files.readAllLines;
 
@@ -19,20 +18,19 @@ public class FileService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     static File myFile = new File("data.txt");
     private static final String TX_LOG_DIR = "transactions/"; // Directory for transaction logs
-    private static final String DELIMITER = ";"; // The semicolon delimiter
+    private static final String DELIMITER = ";";
 
-    // Helper to ensure the transactions directory exists
     private static void ensureTxDirExists() {
         Path dir = Paths.get(TX_LOG_DIR);
         try {
             if (!Files.exists(dir)) {
-                Files.createDirectories(dir); // Creates directory and all necessary parent directories
+                Files.createDirectories(dir);
             }
         } catch (IOException e) {
             System.err.println("Failed to create transaction directory: " + e.getMessage());
         }
     }
-
+    // idk
     private static DebitCard createCardInstanceByName(String name) {
         String cleanName = name.replace("Mastercard ", "").trim().toUpperCase();
 
@@ -41,14 +39,11 @@ public class FileService {
             case "TITANIUM" -> new MastercardTitanium();
             // Handle cases where the card might just be saved as "Mastercard"
             case "MASTERCARD", "STANDARD" -> new Mastercard();
-            default -> null; // Return null if name is unrecognized
+            default -> null;
         };
     }
 
-
-    // --- READ/WRITE MAIN USER FILE ---
-
-    public static List<User> readAllUsers() {
+    public List<User> readAllUsers() {
         List<User> allUsers = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(myFile))) {
@@ -79,7 +74,7 @@ public class FileService {
                     } else if (role.equalsIgnoreCase("Customer")) {
 
                         // EXPECT 7 FIELDS (ID, User, Pass, Role, Accounts, Balances, CardTypes)
-                        if (parts.length != 7) { // <--- MODIFIED FROM 6 TO 7
+                        if (parts.length != 7) {
                             System.err.println("Skipping malformed Customer line (expected 7 fields, got " + parts.length + "): " + line);
                             continue;
                         }
@@ -111,19 +106,18 @@ public class FileService {
                                 throw new RuntimeException("Data format error encountered.", e);
                             }
 
-                            // NEW: Get the card instance
                             String cardName = cardNames[i].trim();
                             DebitCard linkedCard = createCardInstanceByName(cardName);
                             if (linkedCard == null) {
-                                System.err.println("Unknown card type: " + cardName + ". Defaulting to Standard.");
+                                System.err.println("Unknown card type: " + cardName + ". Defaulting to Mastercard.");
                                 linkedCard = new Mastercard();
                             }
 
                             Account account;
                             if (accNum.contains("BA")) {
-                                account = new BankingAccount(accNum, linkedCard); // <-- UPDATED CONSTRUCTOR
+                                account = new BankingAccount(accNum, balance, linkedCard);
                             } else if (accNum.contains("SA")) {
-                                account = new SavingAccount(accNum, linkedCard); // <-- UPDATED CONSTRUCTOR
+                                account = new SavingAccount(accNum, balance, linkedCard);
                             } else {
                                 throw new IllegalArgumentException("Unknown account type: " + accNum);
                             }
@@ -152,18 +146,11 @@ public class FileService {
 
         return allUsers;
     }
-
-    /**
-     * Saves a new customer record to the main data file and creates their default transaction log file.
-     */
     public void saveToFile(Customer customer) {
-        // 1. Ensure the transaction directory exists
         ensureTxDirExists();
 
-        // Define the full path for the new customer's transaction log
         String txFileName = TX_LOG_DIR + "Customer-" + customer.getUser_name() + "-" + customer.getUser_id() + ".txt";
 
-        // --- PART 1: Write to the main data.txt file ---
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(myFile, true))) {
 
             List<String> accounts = customer.getUserAccounts().stream()
@@ -182,13 +169,14 @@ public class FileService {
                     accounts + DELIMITER +
                     balances+ DELIMITER +
                     cardTypes);
+
             writer.newLine();
             System.out.println("Data written to " + myFile);
         } catch (IOException e) {
             System.err.println("Error writing to file: " + e.getMessage());
         }
 
-        // --- PART 2: Create the customer's empty transaction file ---
+        //  Create the customer's empty transaction file by default
         try {
             Path txFilePath = Paths.get(txFileName);
             if (!Files.exists(txFilePath)) {
@@ -200,6 +188,28 @@ public class FileService {
         }
     }
 
+    public void updatePassword(String username, String newEncryptedPassword) {
+        try {
+            List<String> lines = readAllLines(Paths.get("data.txt"));
+
+            for (int i = 0; i < lines.size(); i++) {
+                String[] parts = lines.get(i).split(";");
+
+                if (parts[1].equals(username)) {
+                    parts[2] = newEncryptedPassword;
+
+                    // Rebuild the line
+                    lines.set(i, String.join(";", parts));
+                    break;
+                }
+            }
+
+            Files.write(Paths.get("data.txt"), lines);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     public void updateCustomerRecord(Customer customer) {
         try {
@@ -244,7 +254,14 @@ public class FileService {
         }
     }
 
-    // --- LOOKUP METHODS ---
+    public User findByUsername(String username){
+        List<User> current_users = readAllUsers();
+        for (User customer: current_users){
+            if(customer.getUser_name().equalsIgnoreCase(username))
+                return customer;
+        }
+        return null;
+    }
 
     public Account findAccountByNumber(String accountNumber) {
         List<User> allUsers = readAllUsers();
@@ -261,9 +278,6 @@ public class FileService {
         return null;
     }
 
-    /**
-     * Finds the owner (Customer object) of a given Account by searching the master list.
-     */
     public Customer findCustomerByAccount(Account targetAccount) {
         List<User> allUsers = readAllUsers();
 
@@ -281,31 +295,19 @@ public class FileService {
         return null;
     }
 
-    public User findByUsername(String username){
-        List<User> current_users = readAllUsers();
-        for (User customer: current_users){
-            if(customer.getUser_name().equals(username))
-                return customer;
-        }
-        return null;
-    }
-
-    // --- TRANSACTION LOGGING METHODS ---
-
     public void appendTransaction(Customer user, String transactionDetails) {
         ensureTxDirExists();
         String txFileName = TX_LOG_DIR + "Customer-" + user.getUser_name() + "-"+ user.getUser_id() + ".txt";
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(txFileName, true))) {
-            // transactionDetails now contains the leading \n for visual break
             writer.write(transactionDetails);
-            writer.newLine(); // Add newline after the log block for file structure integrity
+            writer.newLine();
         } catch (IOException e) {
             System.err.println("Error writing transaction log for user " + user.getUser_id() + ": " + e.getMessage());
         }
     }
 
-    public static List<String> readTransactions(Customer user) {
+    public List<String> readTransactions(Customer user) {
         String txFileName = TX_LOG_DIR + "Customer-" + user.getUser_name() + "-"+ user.getUser_id() + ".txt";
         List<String> transactions = new ArrayList<>();
 
@@ -322,103 +324,13 @@ public class FileService {
         return transactions;
     }
 
-    public void updatePassword(String username, String newEncryptedPassword) {
-        try {
-            List<String> lines = readAllLines(Paths.get("data.txt"));
-
-            for (int i = 0; i < lines.size(); i++) {
-                String[] parts = lines.get(i).split(";");
-
-                if (parts[1].equals(username)) {
-                    // parts[0] = userId
-                    // parts[1] = username
-                    // parts[2] = password → CHANGE ONLY THIS
-                    parts[2] = newEncryptedPassword;
-
-                    // Rebuild the line
-                    lines.set(i, String.join(";", parts));
-                    break;
-                }
-            }
-
-            Files.write(Paths.get("data.txt"), lines);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-
-//    public static List<Customer> readAllCustomers() {
-//        List<Customer> all_customers = new ArrayList<>();
-//        try (BufferedReader reader = new BufferedReader(new FileReader(myFile))) {
-//            String line;
-//            while ((line = reader.readLine()) != null) {
-//                if (!line.trim().isEmpty()) {
-//                    String[] parts = line.split(",", 6);
-//
-//                    String userId = parts[0];
-//                    String userName = parts[1];
-//                    String password = parts[2];
-//                    String role = parts[3];
-//
-//                    // Parse account numbers
-//                    String accountsPart = parts[4].replaceAll("[\\[\\]\\s]", "");
-//                    String[] accountNumbers = accountsPart.split(",");
-//
-//                    // Parse balances
-//                    String balancesPart = parts[5].replaceAll("[\\[\\]\\s]", "");
-//                    String[] balancesStr = balancesPart.split(",");
-//
-//                    List<Account> accounts = new ArrayList<>();
-//                    for (int i = 0; i < accountNumbers.length; i++) {
-//                        String accNum = accountNumbers[i];
-//                        double balance = Double.parseDouble(balancesStr[i]);
-//
-//                        Account account;
-//                        if (accNum.contains("BA")) {
-//                            account = new BankingAccount(accNum, balance);
-//                        } else if (accNum.contains("SA")) {
-//                            account = new SavingAccount(accNum, balance);
-//                        } else {
-//                            // fallback if type unknown
-//                            throw new IllegalArgumentException("Unknown account type: " + accNum);
-//                        }
-//
-//                        accounts.add(account);
-//                    }
-//
-//                    Customer customer = new Customer(userId, userName, password, role, accounts);
-//                    all_customers.add(customer);
-//                }
-//            }
-//        } catch (Exception e) {
-//            System.err.println("Error reading all the users from file: " + e.getMessage());
-//        }
-//        return all_customers;
-//    }
-// find user from id
-//    public Customer findById(String user_id){
-//        List<Customer> current_users = readAllCustomers();
-//        for (Customer customer: current_users){
-//            if(customer.getUser_id().equals(user_id))
-//                return customer;
-//        }
-//        return null;
-//    }
-
-// Inside FileService.java
-
-    /**
-     * Parses raw transaction log content into a list of structured TransactionRecord objects.
-     */
     public List<TransactionRecord> parseTransactions(Customer customer) {
-        List<String> rawContent = readTransactions(customer); // Use your existing reader
-        String fullContent = String.join("\n", rawContent);
+        List<String> transactionsLines = readTransactions(customer);
+
+        String fullContent = String.join("\n", transactionsLines);
+
         List<TransactionRecord> records = new ArrayList<>();
 
-        // 1. Split the content by the fixed record separator
-        // Note: The log file might start with a blank line, resulting in an empty first element after the split.
         String[] blocks = fullContent.split("\n#####\n");
 
         for (String block : blocks) {
@@ -432,70 +344,12 @@ public class FileService {
                 for (String line : lines) {
                     if (line.startsWith("DATE: ")) {
                         record.dateTime = line.substring("DATE: ".length()).trim();
-                    } else if (line.startsWith("TYPE: ")) {
-                        record.type = line.substring("TYPE: ".length()).trim();
-                    } else if (line.startsWith("ACCOUNT: ")) {
-                        record.account = line.substring("ACCOUNT: ".length()).trim();
-                    } else if (line.startsWith("AMOUNT: ")) {
-                        // Removes sign (+ or -) and parses the number, setting the sign in the double
-                        String amountStr = line.substring("AMOUNT: ".length()).trim();
-                        record.amount = Double.parseDouble(amountStr);
-                    } else if (line.startsWith("NEW_BALANCE: ")) {
-                        record.newBalance = Double.parseDouble(line.substring("NEW_BALANCE: ".length()).trim());
-                    } else if (line.startsWith("NOTES: ")) {
-                        record.notes = line.substring("NOTES: ".length()).trim();
-                    } else if (line.startsWith("TO_ACCOUNT: ")) {
-                        record.notes = "Transfer To: " + line.substring("TO_ACCOUNT: ".length()).trim();
-                    } else if (line.startsWith("FROM_ACCOUNT: ")) {
-                        record.notes = "Transfer From: " + line.substring("FROM_ACCOUNT: ".length()).trim();
-                    }
-                }
-                // If the notes field is null (default for deposits/withdrawals without notes), set it to N/A
-                if (record.notes == null) {
-                    record.notes = "N/A";
-                }
-                records.add(record);
-            } catch (Exception e) {
-                System.err.println("Error parsing transaction block: " + trimmedBlock + ". Error: " + e.getMessage());
-            }
-        }
-        return records;
-    }
-
-    /**
-     * Parses raw transaction log content into a list of structured TransactionRecord objects.
-     * * @param customer The customer whose transaction log is being read.
-     * @return A list of parsed TransactionRecord objects.
-     */
-    public static List<TransactionRecord> getParsedStatement(Customer customer) {
-        List<String> rawContent = readTransactions(customer);
-        String fullContent = String.join("\n", rawContent);
-
-        // 1. Initialize the list that will be returned (error fix)
-        List<TransactionRecord> records = new ArrayList<>();
-
-        // 2. Read and split blocks (error fix)
-        String[] blocks = fullContent.split("\n#####\n");
-
-        for (String block : blocks) {
-            String trimmedBlock = block.trim();
-            if (trimmedBlock.isEmpty()) continue;
-
-            TransactionRecord record = new TransactionRecord();
-            String[] lines = trimmedBlock.split("\n");
-
-            try {
-                for (String line : lines) {
-                    if (line.startsWith("DATE: ")) {
-                        record.dateTime = line.substring("DATE: ".length()).trim();
-                        // Parse the date string into the LocalDateTime object
                         record.parsedDateTime = LocalDateTime.parse(record.dateTime, LOG_DATE_FORMATTER);
                     } else if (line.startsWith("TYPE: ")) {
                         record.type = line.substring("TYPE: ".length()).trim();
                     } else if (line.startsWith("ACCOUNT: ")) {
                         record.account = line.substring("ACCOUNT: ".length()).trim();
                     } else if (line.startsWith("AMOUNT: ")) {
-                        // Parses the amount, keeping the sign (+/-)
                         String amountStr = line.substring("AMOUNT: ".length()).trim();
                         record.amount = Double.parseDouble(amountStr);
                     } else if (line.startsWith("NEW_BALANCE: ")) {
@@ -509,101 +363,68 @@ public class FileService {
                     }
                 }
 
-                // Final check for notes
                 if (record.notes == null || record.notes.isEmpty() || record.notes.equalsIgnoreCase("N/A")) {
                     record.notes = "N/A";
                 }
 
-                // 3. Add the fully parsed record to the list (error fix)
                 records.add(record);
 
             } catch (Exception e) {
-                // In case of a single corrupt transaction block, log and skip it.
                 System.err.println("Error parsing transaction block: " + trimmedBlock + ". Skipping this record.");
                 e.printStackTrace();
             }
         }
         return records;
     }
-//This method MUST be STATIC since it operates on Customer data retrieved via FileService methods.
-    public static List<TransactionRecord> filterTransactions(Customer customer, String filterType) {
-        // Get all parsed records. Assumes getParsedStatement is correctly defined elsewhere.
-        List<TransactionRecord> allRecords = getParsedStatement(customer);
+    public List<TransactionRecord> filterTransactions(Customer customer, String filterType) {
 
-        // Define the current time for comparison
+        List<TransactionRecord> allRecords = parseTransactions(customer);
+
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime filterStart = null;
-        LocalDateTime filterEnd = now; // Default end time is 'now' (inclusive)
+        LocalDateTime filterEnd = now;
 
-        // Determine the start and end points for the filter based on the string condition
+
         switch (filterType.toLowerCase()) {
-            case "today":
-                filterStart = now.truncatedTo(ChronoUnit.DAYS); // Start of today (00:00:00)
-                break;
-
-            case "yesterday":
-                // Start: Beginning of yesterday
-                filterStart = now.minusDays(1).truncatedTo(ChronoUnit.DAYS); // 2025-12-07 00:00:00
-                // End: Beginning of today (Excludes today's transactions)
-                filterEnd = now.truncatedTo(ChronoUnit.DAYS); // 2025-12-08 00:00:00
-                break;
-
-            case "last week":
-            case "last 7 days":
-                // Go back 7 days from the beginning of today (to include all of today)
-                filterStart = now.minusDays(7).truncatedTo(ChronoUnit.DAYS);
-                break;
-
-            case "last month":
-            case "last 30 days":
-                // Go back 30 days from the beginning of today
-                filterStart = now.minusDays(30).truncatedTo(ChronoUnit.DAYS);
-                break;
-
-            case "all":
-                return allRecords; // Return all without filtering
-
-            default:
+            case "today" -> filterStart = now.truncatedTo(ChronoUnit.DAYS);
+            case "yesterday" -> {
+                filterStart = now.minusDays(1).truncatedTo(ChronoUnit.DAYS);
+                filterEnd = now.truncatedTo(ChronoUnit.DAYS);
+            }
+            case "last week", "last 7 days" -> filterStart = now.minusDays(7).truncatedTo(ChronoUnit.DAYS);
+            case "last month", "last 30 days" -> filterStart = now.minusDays(30).truncatedTo(ChronoUnit.DAYS);
+            case "all" -> {
+                return allRecords;
+            }
+            default -> {
                 System.err.println("Invalid filter type specified: " + filterType);
                 return new ArrayList<>();
+            }
         }
 
-        // CRITICAL: Handle the case where the switch defaulted or if filterStart wasn't set.
-        if (filterStart == null) {
-            System.err.println("Filtering error: filterStart was not initialized.");
-            return new ArrayList<>();
-        }
-
-        // Capture the final boundaries for the filter stream
         final LocalDateTime finalFilterStart = filterStart;
         final LocalDateTime finalFilterEnd = filterEnd;
 
-        // Filter the records using Java Streams
         return allRecords.stream()
                 .filter(record -> record.parsedDateTime != null &&
-                        // Check Start: Transaction date is NOT before the start date (>= start)
                         !record.parsedDateTime.isBefore(finalFilterStart) &&
-                        // Check End: Transaction date IS before the end date (< end)
                         record.parsedDateTime.isBefore(finalFilterEnd))
                 .collect(Collectors.toList());
     }
 
-    public static double calculateTodayUsage(Customer customer, String accountNumber, String transactionType, String filterType) {
-        // 1. Filter all records for the specified date range (should be "today")
-        List<TransactionRecord> todayRecords = filterTransactions(customer, filterType);
+    public double calculateTodayUsage(Customer customer, String accountNumber, String transactionType) {
+        // Filter all records to get today records
+        List<TransactionRecord> todayRecords = filterTransactions(customer, "today");
         double totalUsage = 0.0;
 
         for (TransactionRecord record : todayRecords) {
-            // 2. Check if the record matches the target account and type
             if (record.account.equals(accountNumber) &&
                     record.type.equalsIgnoreCase(transactionType)) {
 
-                // 3. Sum the absolute amount (since we are tracking usage, not balance change)
                 totalUsage += Math.abs(record.amount);
             }
         }
         return totalUsage;
     }
-
 
 }

@@ -19,11 +19,6 @@ public class MastercardPlatinum implements DebitCard{
     }
 
     @Override
-    public double getExternalDepositLimitPerDay() {
-        return 100000;
-    }
-
-    @Override
     public double getOwnAccountDepositLimitPerDay() {
         return 200000;
     }

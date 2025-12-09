@@ -4,8 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Admin extends User {
-    //can add customers -- signup the users and assign them account by default (user_id based on user's input, acc_num auto generated)
-
     AuthService authService = new AuthService();
 
     public Admin(String user_id, String user_name, String password, String role) {

@@ -1,7 +1,4 @@
 package com.ga.project;
-
-import java.util.Date;
-
 abstract class Account {
 
     //withdraw
@@ -21,10 +18,11 @@ abstract class Account {
         this.account_type = account_type;
         this.linkedCard = linkedCard;
     }
-    public Account(String account_number, String account_type,double balance) {
+    public Account(String account_number, String account_type,double balance,DebitCard linkedCard) {
         this.account_number = account_number;
         this.balance = balance;
         this.account_type = account_type;
+        this.linkedCard = linkedCard;
     }
 
     public String getAccount_number() {

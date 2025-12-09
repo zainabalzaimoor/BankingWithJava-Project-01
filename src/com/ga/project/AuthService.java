@@ -1,22 +1,13 @@
 package com.ga.project;
-import java.util.List;
-import java.util.Scanner;
-
 import java.util.concurrent.TimeUnit;
 
 public class AuthService {
-//    private static boolean isLogin = false;
-    Scanner scanner = new Scanner(System.in);
     private static int fail_attempts = 0;
     private static final long LOCK_DURATION_MS = TimeUnit.MINUTES.toMillis(1);
     private static long lockStartTime = 0;
     private User logged_in_user = null;
-
     FileService fileService = new FileService();
-
-
-    // the admin will create the users and assign them account by default in this step as well and initally the balance
-    // will be = 0 so also in the file we should save the account number there assigned for each customer so that we'd know the user has this account
+    PasswordEncryption passwordEncryption = new PasswordEncryption();
 
     // Signup called by admin
     public void signup(Customer customer){
@@ -30,8 +21,6 @@ public class AuthService {
         }
 
         try {
-//            String encrypted_password = PasswordEncryption.hashPassword(customer.getPassword());
-//            customer.setPassword(encrypted_password);
             customer.setUser_id(customer.getUser_id());
             customer.setUser_name(customer.getUser_name());
             customer.setRole("Customer");
@@ -45,76 +34,41 @@ public class AuthService {
 
     }
 
-//    public void signup(Customer customer) {
-//        if (fileService.findByUsername(customer.getUser_name()) != null) {
-//            System.out.println("Username already exists!");
-//            return;
-//        }
-//        String hashed = PasswordEncryption.hashPassword(customer.getPassword());
-//        customer.setPassword(hashed);
-//        FileService.saveToFile(customer);
-//        System.out.println("Customer created successfully!");
-//    }
-//
+    public String login(String username, String password) {
 
-    public String login(String username,String password){
         User user = fileService.findByUsername(username);
-        if (user == null) {
-            System.out.println("User does not exist!");
-            return "USER_NOT_FOUND";
-        }
-        if(user.getPassword().equals("")){
-            return "EMPTY_PASSWORD";
-        }
 
+        // Account lock check
         long now = System.currentTimeMillis();
 
-        // Check if user is currently locked
         if (fail_attempts >= 3) {
             if (now - lockStartTime < LOCK_DURATION_MS) {
-                System.out.println("Too many failed attempts. Please wait 1 minute.");
-                return "WARRING: WAIT_ONE_MINUTE";
+                return "LOCKED_ACCOUNT";
             } else {
-                // Lock expired → reset attempts
-                fail_attempts = 0;
+                fail_attempts = 0; // lock expired
             }
-    }
-
-    String hashed = PasswordEncryption.hashPassword(password);
-
-        assert hashed != null;
-        if (!hashed.equals(user.getPassword())) {
-        fail_attempts++;
-
-        if (fail_attempts == 3) {
-            // Start lock timer
-            lockStartTime = now;
         }
 
-        System.out.println("Incorrect password! You " + (3-fail_attempts) + " Attempts left.");
-        return "WRONG_PASSWORD";
-    }
+        // Check password
+        boolean isEqual = passwordEncryption.verifyPassword(password, user.getPassword());
 
-    // Successful login
-//        if ("Banker".equals(user.getRole())) {
-//            // make sure we store an Admin object
-//            logged_in_user = new Admin(user.getUser_id(), user.getUser_name(), user.getPassword(), "Banker");
-//        } else {
-//            logged_in_user = user;
-////            Customer c = fileService.findById(user.getUser_id());
-////            logged_in_user = new Customer(c.getUser_id(), c.getUser_name(), c.getPassword(), "Customer", c.getUserAccounts());
-//        }
-    logged_in_user = user;
-    fail_attempts = 0;
-    System.out.println("Login successful! Welcome " + username);
-    return "SUCCESS";
+        if (!isEqual) {
+            fail_attempts++;
+            if (fail_attempts == 3) lockStartTime = now;
+            return "WRONG_PASSWORD";
+        }
+
+        // Success
+        logged_in_user = user;
+        fail_attempts = 0;
+        return "SUCCESS";
     }
 
     public void setPassword(String username, String password){
         User user = fileService.findByUsername(username);
         if (user == null)
             System.out.println("User does not exist!");
-        String encrypted_password = PasswordEncryption.hashPassword(password);
+        String encrypted_password = passwordEncryption.hashPassword(password);
         assert user != null;
         fileService.updatePassword(user.getUser_name(),encrypted_password);
     }
@@ -130,5 +84,27 @@ public class AuthService {
     public User getLoggedInUser() {
         return logged_in_user;
     }
+
+    public boolean userHasNoPassword(String name){
+        for (User user : fileService.readAllUsers()) {
+            if(user.getUser_name().equals(name)) {
+            if (user.getPassword() == null || user.getPassword().isEmpty() || user.getPassword().equals("DEFAULT_UNSET_PASS")) {
+                return true;
+            }
+            }
+        }
+        return false;
+
+    }
+    public boolean checkUsers(String username){
+    User user = fileService.findByUsername(username);
+    return user != null;
+    }
+
+    public int getAttemptsLeft() {
+        return Math.max(0, 3 - fail_attempts);
+    }
+
+
 
 }
